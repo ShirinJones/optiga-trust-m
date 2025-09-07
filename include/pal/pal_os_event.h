@@ -22,6 +22,8 @@ extern "C" {
 
 #include "optiga_lib_types.h"
 
+typedef uint16_t pal_status_t;  // or use the actual type from optiga_lib_types.h
+
 /**
  * \brief typedef for Callback function when timer elapses.
  */
@@ -45,60 +47,17 @@ typedef struct pal_os_event {
 
 /**
  * \brief Create an os event.
- *
- * \details
- * Starts an OS event.
- *
- * \pre
- * - None
- *
- * \note
- * - None
- *
- * \param[in] callback                      Callback function to be registered internally
- * \param[in] callback_args                 Argument to be passed to registered callback
- *
  */
 LIBRARY_EXPORTS pal_os_event_t *
 pal_os_event_create(register_callback callback, void *callback_args);
 
 /**
  * \brief Destroys an os event.
- *
- * \details
- * Destroys an OS event.
- *
- * \pre
- * - None
- *
- * \note
- * - None
- *
- * \param[in] pal_os_event                  pal_os_event to be destroyed
- *
  */
 LIBRARY_EXPORTS void pal_os_event_destroy(pal_os_event_t *pal_os_event);
 
 /**
  * \brief Callback registration function to trigger once when timer expires.
- *
- * \details
- * Platform specific event call back registration function to trigger once when timer expires.
- *  - This function registers the callback function supplied by the caller.
- *  - It triggers a timer with the supplied time interval in microseconds.
- *  - Once the timer expires, the registered callback function gets called.
- *
- * \pre
- * - None
- *
- * \note
- * - None
- *
- * \param[in] p_pal_os_event        Pointer to pal_os_event
- * \param[in] callback              Callback function pointer
- * \param[in] callback_args         Callback arguments
- * \param[in] time_us               time in micro seconds to trigger the call back
- *
  */
 LIBRARY_EXPORTS void pal_os_event_register_callback_oneshot(
     pal_os_event_t *p_pal_os_event,
@@ -109,57 +68,26 @@ LIBRARY_EXPORTS void pal_os_event_register_callback_oneshot(
 
 /**
  * \brief Timer callback handler.
- *
- * \details
- * Timer callback handler.
- *  - This gets called from the TIMER elapse event.
- *  - Once the timer expires, the registered callback function gets called from the timer event handler, if the call back is not NULL.
- *
- * \pre
- * - None
- *
- * \note
- * - None
- *
  */
 void pal_os_event_trigger_registered_callback(void);
 
 /**
  * \brief Start an os event.
- *
- * \details
- * Starts an OS event.
- *
- * \pre
- * - None
- *
- * \note
- * - None
- *
- * \param[in] p_pal_os_event                Pointer to os event
- * \param[in] callback                      Callback function to be registered internally
- * \param[in] callback_args                 Arguement to be passed to registered callback
- *
  */
 LIBRARY_EXPORTS void
 pal_os_event_start(pal_os_event_t *p_pal_os_event, register_callback callback, void *callback_args);
 
 /**
  * \brief Stops an os event.
- *
- * \details
- * Stops an OS event.
- *
- * \pre
- * - None
- *
- * \note
- * - None
- *
- * \param[in] p_pal_os_event                Pointer to os event
- *
  */
 LIBRARY_EXPORTS void pal_os_event_stop(pal_os_event_t *p_pal_os_event);
+
+/**
+ * \brief Initialize PAL OS event system.
+ *
+ * \return PAL_STATUS_SUCCESS on success, PAL_STATUS_FAILURE otherwise.
+ */
+LIBRARY_EXPORTS pal_status_t pal_os_event_init(void);
 
 #ifdef __cplusplus
 }

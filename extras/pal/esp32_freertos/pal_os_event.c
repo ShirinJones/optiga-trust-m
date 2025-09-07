@@ -30,16 +30,23 @@ void pal_os_event_delayms(uint32_t time_ms);
 static pal_os_event_t pal_os_event_0 = {0};
 uint32_t timeout = 0;
 
-void pal_os_event_start(
-    pal_os_event_t *p_pal_os_event,
-    register_callback callback,
-    void *callback_args
-) {
+static bool s_pal_inited = false;
+
+
+void pal_os_event_start(pal_os_event_t *p_pal_os_event,
+                        register_callback callback,
+                        void *callback_args)
+{
+    if (!s_pal_inited) {
+        if (pal_os_event_init() != PAL_STATUS_SUCCESS) return;
+    }
+
     if (FALSE == p_pal_os_event->is_event_triggered) {
         p_pal_os_event->is_event_triggered = TRUE;
         pal_os_event_register_callback_oneshot(p_pal_os_event, callback, callback_args, 1000);
     }
 }
+
 
 void pal_os_event_stop(pal_os_event_t *p_pal_os_event) {
     // lint --e{714} suppress "The API pal_os_event_stop is not exposed in header file but used as extern in
@@ -47,12 +54,19 @@ void pal_os_event_stop(pal_os_event_t *p_pal_os_event) {
     p_pal_os_event->is_event_triggered = FALSE;
 }
 
-pal_os_event_t *pal_os_event_create(register_callback callback, void *callback_args) {
+pal_os_event_t *pal_os_event_create(register_callback callback, void *callback_args)
+{
+    // Ensure PAL is initialized
+    if (!s_pal_inited && pal_os_event_init() != PAL_STATUS_SUCCESS) {
+        return NULL;
+    }
+
     if ((NULL != callback) && (NULL != callback_args)) {
         pal_os_event_start(&pal_os_event_0, callback, callback_args);
     }
-    return (&pal_os_event_0);
+    return &pal_os_event_0;
 }
+
 
 /// @endcond
 
@@ -108,78 +122,73 @@ void _pal_os_event_trigger_registered_callback(void *pvParameters) {
     pal_os_event_trigger_registered_callback();
 }
 
-pal_status_t pal_os_event_init(void) {
+pal_status_t pal_os_event_init(void)
+{
+    if (s_pal_inited) return PAL_STATUS_SUCCESS;
+
     pal_status_t status = PAL_STATUS_FAILURE;
     BaseType_t xReturned;
 
     do {
-        /* Create a semaphore and take it now */
         xSemaphore = xSemaphoreCreateBinary();
-        if (xSemaphore == NULL) {
-            break;
-        }
+        if (xSemaphore == NULL) break;
 
-        xSemaphoreTake(xSemaphore, (TickType_t)10);
+        // take it once so the handler task will block
+        (void)xSemaphoreTake(xSemaphore, (TickType_t)0);
 
-        /* Create the handler for the callbacks. */
         xReturned = xTaskCreate(
-            pal_os_event_trigger_registered_callback, /* Function that implements the task. */
-            "otx_os_tsk", /* Text name for the task. */
-            configMINIMAL_STACK_SIZE * 5, /* Stack size in words, not bytes. */
-            NULL, /* Parameter passed into the task. */
-            5, /* Priority at which the task is created. */
-            NULL
-        ); /* Used to pass out the created task's handle. */
-        if (xReturned != pdPASS) {
-            break;
-        }
+            pal_os_event_trigger_registered_callback,
+            "otx_os_tsk",
+            configMINIMAL_STACK_SIZE * 5,
+            NULL,
+            5,
+            NULL);
+        if (xReturned != pdPASS) break;
 
         ESP_LOGI("pal_os_event", "Init : Create Timer");
-#if 0        
-		xTimer = xTimerCreate("otx_os_tmr",        /* Just a text name, not used by the kernel. */
-							  1 / portTICK_PERIOD_MS,    /* The timer period in ticks. */
-							  pdFALSE,         /* The timers will auto-reload themselves when they expire. */
-							  ( void * ) NULL,   /* Assign each timer a unique id equal to its array index. */
-							  vTimerCallback  /* Each timer calls the same callback when it expires. */
-							  );
-#endif
-        xTimer = xTimerCreate("otx_os_tmr2", pdMS_TO_TICKS(10), pdFALSE, (void *)0, vTimerCallback);
+        xTimer = xTimerCreate("otx_os_tmr",
+                              pdMS_TO_TICKS(10),   // default period (changed per oneshot)
+                              pdFALSE,             // one-shot
+                              (void *)0,
+                              vTimerCallback);
+        if (xTimer == NULL) break;
 
-        if (xTimer == NULL) {
-            break;
-        }
         ESP_LOGI("pal_os_event", "Init : Create Timer successful");
         status = PAL_STATUS_SUCCESS;
-
+        s_pal_inited = true;
     } while (0);
 
     return status;
 }
 
-void pal_os_event_register_callback_oneshot(
-    pal_os_event_t *p_pal_os_event,
-    register_callback callback,
-    void *callback_args,
-    uint32_t time_us
-)
 
+void pal_os_event_register_callback_oneshot(pal_os_event_t *p_pal_os_event,
+                                            register_callback callback,
+                                            void *callback_args,
+                                            uint32_t time_us)
 {
-    if (time_us < 1000) {
-        time_us = 1000;
-    } else {
-        if (time_us % 1000)
-            time_us++;
+    if (!s_pal_inited) {
+        if (pal_os_event_init() != PAL_STATUS_SUCCESS) return;
+    }
+    if (xTimer == NULL) {
+        // defensively bail out if timer was not created
+        return;
     }
 
-    // timeout = (time_us/1000);
-    // if (time_us%1000) timeout++;
-    p_pal_os_event->callback_registered = callback;
-    p_pal_os_event->callback_ctx = callback_args;
+    // clamp and convert us->ticks
+    if (time_us < 1000) time_us = 1000;
+    TickType_t ticks = pdMS_TO_TICKS((time_us + 999) / 1000); // ceil to ms, then to ticks
+    if (ticks == 0) ticks = 1;
 
-    // ESP_LOGI("pal_os_event", "oneShot : %d", time_us);
-    // xTimerChangePeriod( xTimer, (time_us / 1000) / portTICK_PERIOD_MS, 10);
-    xTimerChangePeriod(xTimer, pdMS_TO_TICKS(10), portMAX_DELAY);
+    p_pal_os_event->callback_registered = callback;
+    p_pal_os_event->callback_ctx        = callback_args;
+
+    // Change period and start the one-shot timer
+    if (xTimerChangePeriod(xTimer, ticks, 0) == pdPASS) {
+        (void)xTimerStart(xTimer, 0);
+    }
 }
+
 
 void pal_os_event_delayms(uint32_t time_ms) {
     const TickType_t xDelay = time_ms / portTICK_PERIOD_MS;
