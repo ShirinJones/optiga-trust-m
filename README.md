@@ -87,7 +87,7 @@ For production use, it is highly recommended to:
 For immediate testing of the TLS client authentication, you can generate a client certificate offline using your CA and load it onto the ESP32 via the filesystem, bypassing the on-device CSR generation for now.
 
 ## 📜 License
-This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/ShirinJones/optiga-trust-m/blob/main/LICENSE) file for details.
 
 ## 🔗 References
 - [Infineon OPTIGA Trust M](https://infineon.github.io/arduino-optiga-trust-m/index.html)
